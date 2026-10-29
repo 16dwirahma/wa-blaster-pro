@@ -121,7 +121,7 @@ with tab2:
                 st.markdown("### 📥 Download Kontak VCF")
                 st.markdown(f"Total data siap diunduh ke HP: **{len(df)}** dari **{len(df)}** data.")
                 
-                # Pembuatan VCF dengan format gabungan Nama (PT - Jabatan) agar langsung muncul di preview kontak HP
+                # Pembuatan VCF Bersih: Nama Asli (FN), Jabatan (TITLE), Perusahaan (ORG), dan NOTE pendukung
                 vcf_data = []
                 for _, row in df.iterrows():
                     name = str(row[col_nama]).strip() if pd.notna(row[col_nama]) else ""
@@ -129,17 +129,15 @@ with tab2:
                     title = str(row[col_jabatan]).strip() if col_jabatan and pd.notna(row[col_jabatan]) else ""
                     org = str(row[col_pt]).strip() if col_pt and pd.notna(row[col_pt]) else ""
                     
-                    # Format Nama Tampilan Kontak agar langsung menyertakan Perusahaan & Jabatan
-                    display_name = f"{name} - {org} ({title})" if org and title else name
-                    
                     vcf_card = (
                         f"BEGIN:VCARD\n"
                         f"VERSION:3.0\n"
-                        f"FN:{display_name}\n"
-                        f"N:{name};;;;\n"
+                        f"FN:{name}\n"
+                        f"N:;{name};;;\n"
                         f"TEL:{phone}\n"
                         f"TITLE:{title}\n"
                         f"ORG:{org}\n"
+                        f"NOTE:Jabatan: {title} | PT: {org}\n"
                         f"END:VCARD\n"
                     )
                     vcf_data.append(vcf_card)
@@ -156,8 +154,12 @@ with tab2:
                 st.markdown("---")
                 st.markdown("### 💬 Template Pesan & Blasting WhatsApp")
                 
-                default_template = "Halo Bapak/Ibu {Nama},\n\nPerkenankan saya Dwi dari Bank CTBC. Kami ingin menginformasikan fasilitas Pinjaman Tanpa Agunan (KTA) dengan bunga ringan."
-                message_template = st.text_area("Template Pesan WhatsApp (Gunakan tag {Nama}):", value=default_template, height=120)
+                default_template = (
+                    "Halo Bapak/Ibu {Nama},\n\n"
+                    "Perkenankan saya Dwi dari Bank CTBC. Kami ingin menginformasikan fasilitas Pinjaman Tanpa Agunan (KTA) dengan bunga ringan dan proses cepat tanpa jaminan.\n\n"
+                    "Apakah ada waktu sejenak untuk berdiskusi lebih lanjut?"
+                )
+                message_template = st.text_area("Template Pesan WhatsApp (Gunakan tag {Nama}):", value=default_template, height=140)
                 
                 st.markdown("### 📋 Daftar Aksi Kirim WhatsApp:")
                 
