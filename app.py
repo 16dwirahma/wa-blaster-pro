@@ -96,7 +96,7 @@ with tab2:
             col_jabatan = next((c for c in df.columns if 'jabatan' in c or 'title' in c or 'position' in c or 'posisi' in c), None)
             
             if col_nama and col_hp:
-                # Standarisasi nomor HP: tambahkan 62 di depan jika diawali angka 8, atau tangani 0 / 62
+                # Standarisasi nomor HP: tambahkan 62 di depan jika diawali angka 8
                 def clean_phone(val):
                     val_str = str(val).strip()
                     if val_str.endswith('.0'):
@@ -121,22 +121,25 @@ with tab2:
                 st.markdown("### 📥 Download Kontak VCF")
                 st.markdown(f"Total data siap diunduh ke HP: **{len(df)}** dari **{len(df)}** data.")
                 
-                # Pembuatan VCF Presisi: Nama, Nomor HP (62...), Jabatan (TITLE), Perusahaan (ORG), serta NOTE Cadangan agar terbaca di semua HP
+                # Pembuatan VCF dengan format gabungan Nama (PT - Jabatan) agar langsung muncul di preview kontak HP
                 vcf_data = []
                 for _, row in df.iterrows():
                     name = str(row[col_nama]).strip() if pd.notna(row[col_nama]) else ""
                     phone = str(row['cleaned_hp']).strip()
-                    title = str(row[col_jabatan]).strip() if col_jabatan and pd.notna(row[col_jabatan]) else "Profesional"
-                    org = str(row[col_pt]).strip() if col_pt and pd.notna(row[col_pt]) else "Klien"
+                    title = str(row[col_jabatan]).strip() if col_jabatan and pd.notna(row[col_jabatan]) else ""
+                    org = str(row[col_pt]).strip() if col_pt and pd.notna(row[col_pt]) else ""
+                    
+                    # Format Nama Tampilan Kontak agar langsung menyertakan Perusahaan & Jabatan
+                    display_name = f"{name} - {org} ({title})" if org and title else name
                     
                     vcf_card = (
                         f"BEGIN:VCARD\n"
                         f"VERSION:3.0\n"
-                        f"FN:{name}\n"
+                        f"FN:{display_name}\n"
+                        f"N:{name};;;;\n"
                         f"TEL:{phone}\n"
                         f"TITLE:{title}\n"
                         f"ORG:{org}\n"
-                        f"NOTE:Jabatan: {title} | Perusahaan: {org}\n"
                         f"END:VCARD\n"
                     )
                     vcf_data.append(vcf_card)
