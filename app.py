@@ -7,7 +7,7 @@ import urllib.parse
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
-    page_title="WA Blaster Pro - Validasi LinkedIn & Kontak VCF",
+    page_title="WA Blaster Pro - Multi-Account & VCF Generator",
     page_icon="📱",
     layout="wide"
 )
@@ -34,12 +34,25 @@ else:
         st.sidebar.warning("Silakan masukkan Gemini API Key terlebih dahulu.")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### ⚙️ Setting Device WA")
-default_wa = st.sidebar.text_input("Nomor Utama (WA 1):", value="625888140182")
-st.sidebar.markdown(f"<div style='background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; text-align: center;'><b>WA Active: {default_wa}</b></div>", unsafe_allow_html=True)
+st.sidebar.markdown("### ⚙️ Setting Multi-Akun WhatsApp (6 Akun)")
+
+# Daftar 6 Akun WhatsApp Rotasi Anda (Bisa diganti nomor aslinya sesuai kebutuhan)
+list_akun_wa = {
+    "Akun WA 1 (Utama)": "625888140182",
+    "Akun WA 2": "625220974497",
+    "Akun WA 3": "6281200000003",
+    "Akun WA 4": "6281200000004",
+    "Akun WA 5": "6281200000005",
+    "Akun WA 6": "6281200000006",
+}
+
+pilihan_akun = st.sidebar.selectbox("Pilih Akun WhatsApp Pengirim:", list(list_akun_wa.keys()))
+custom_wa_input = st.sidebar.text_input("Atau Ketik Nomor WA Pengirim Aktif:", value=list_akun_wa[pilihan_akun])
+
+st.sidebar.markdown(f"<div style='background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; text-align: center;'><b>Active Sender: {custom_wa_input}</b></div>", unsafe_allow_html=True)
 
 # Judul Utama Aplikasi
-st.markdown("## 📱 WA Blaster Pro - Validasi LinkedIn & Kontak VCF")
+st.markdown("## 📱 WA Blaster Pro - Multi-Account & VCF Generator")
 st.markdown("---")
 
 # Tab Menu Utama
@@ -48,7 +61,7 @@ tab1, tab2 = st.tabs(["📸 Scan Hardcopy (Foto Doc)", "📁 Upload Excel / Data
 # --- TAB 1: OCR HARDCOPY ---
 with tab1:
     st.markdown("### 📸 Upload Foto Dokumen Hardcopy Database")
-    uploaded_image = st.file_uploader("Pilih foto dokumen (JPG/PNG)", type=["jpg", "jpeg", "png"])
+    uploaded_image = st.file_uploader("Pilih foto dokumen (JPG/PNG)", type=["jpg", "jpeg", "png"], key="ocr_img")
     
     if uploaded_image is not None:
         image = Image.open(uploaded_image)
@@ -76,18 +89,24 @@ with tab1:
 # --- TAB 2: UPLOAD EXCEL ---
 with tab2:
     st.markdown("### 📁 Upload File Excel Database Prospek")
-    uploaded_file = st.file_uploader("Pilih file Excel (.xlsx) atau CSV", type=["xlsx", "csv"])
+    
+    # Gunakan uploader dengan penanganan state bersih agar file baru langsung menggantikan file lama
+    uploaded_file = st.file_uploader("Pilih file Excel (.xlsx) atau CSV", type=["xlsx", "csv"], key="excel_uploader_fresh")
     
     if uploaded_file is not None:
         try:
+            # Baca file Excel atau CSV secara langsung berdasarkan uploader aktif
             if uploaded_file.name.endswith('.csv'):
                 df = pd.read_csv(uploaded_file)
             else:
-                df = pd.read_excel(uploaded_file)
+                xls = pd.ExcelFile(uploaded_file)
+                # Ambil sheet pertama secara otomatis
+                sheet_to_read = xls.sheet_names[0]
+                df = pd.read_excel(uploaded_file, sheet_name=sheet_to_read)
             
-            st.success(f"File berhasil dimuat! Total baris data: {len(df)}")
+            st.success(f"File **{uploaded_file.name}** berhasil dimuat! Total baris data: {len(df)}")
             
-            # Normalisasi Header Otomatis agar cocok dengan file Excel (nama, no_hp, nama_pt, jabatan)
+            # Normalisasi Header Otomatis agar fleksibel mendeteksi kolom nama, no_hp, nama_pt, jabatan
             df.columns = [str(col).strip().lower() for col in df.columns]
             
             col_nama = next((c for c in df.columns if 'nama' in c and 'pt' not in c), None)
@@ -112,7 +131,7 @@ with tab2:
 
                 df['cleaned_hp'] = df[col_hp].apply(clean_phone)
                 
-                # Tampilkan Preview Data Prospek di Layar (Tanpa kolom cleaned_hp)
+                # Tampilkan Preview Data Prospek dari file baru
                 st.markdown("### Preview Data Prospek:")
                 display_cols = [c for c in [col_nama, col_hp, col_pt, col_jabatan] if c is not None]
                 st.dataframe(df[display_cols].head())
@@ -121,7 +140,7 @@ with tab2:
                 st.markdown("### 📥 Download Kontak VCF")
                 st.markdown(f"Total data siap diunduh ke HP: **{len(df)}** dari **{len(df)}** data.")
                 
-                # Pembuatan VCF dengan format TEL:+{phone} agar terbaca sempurna oleh WhatsApp & HP
+                # Pembuatan VCF dengan format TEL:+{phone} agar sinkron dengan WhatsApp
                 vcf_data = []
                 for _, row in df.iterrows():
                     name = str(row[col_nama]).strip() if pd.notna(row[col_nama]) else ""
@@ -161,7 +180,7 @@ with tab2:
                 )
                 message_template = st.text_area("Template Pesan WhatsApp (Gunakan tag {Nama}):", value=default_template, height=140)
                 
-                st.markdown("### 📋 Daftar Aksi Kirim WhatsApp:")
+                st.markdown(f"### 📋 Daftar Aksi Kirim WhatsApp (Menggunakan Akun: `{custom_wa_input}`):")
                 
                 for _, row in df.iterrows():
                     nama_prospek = str(row[col_nama]) if pd.notna(row[col_nama]) else "-"
@@ -188,6 +207,6 @@ with tab2:
                     st.divider()
                     
             else:
-                st.warning("⚠️ Kolom 'nama' atau 'no_hp' tidak terdeteksi otomatis pada file Excel Anda.")
+                st.warning("⚠️ Kolom 'nama' atau 'no_hp' tidak terdeteksi otomatis pada file Excel Anda. Pastikan header kolom sesuai.")
         except Exception as e:
             st.error(f"Gagal membaca file Excel/CSV: {e}")
