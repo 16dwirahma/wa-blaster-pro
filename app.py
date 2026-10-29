@@ -169,4 +169,4 @@ with tab2:
             else:
                 st.warning("⚠️ Kolom 'nama' atau 'no_hp' tidak terdeteksi otomatis pada file Excel Anda.")
         except Exception as e:
-            st.error(f"Gagal membaca file Excel/CSV: {e}")git add app.py
+            st.error(f"Gagal membaca file Excel/CSV: {e}")
