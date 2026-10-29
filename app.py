@@ -13,7 +13,6 @@ st.set_page_config(
 )
 
 # Inisialisasi API Key Gemini
-# Cek apakah API key tersedia di Streamlit Secrets atau input manual di sidebar
 api_key = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -88,7 +87,7 @@ with tab2:
             
             st.success(f"File berhasil dimuat! Total baris data: {len(df)}")
             
-            # Normalisasi Header Otomatis
+            # Normalisasi Header Otomatis untuk pencarian kolom
             df.columns = [str(col).strip().lower() for col in df.columns]
             
             # Deteksi kolom secara fleksibel
@@ -98,7 +97,7 @@ with tab2:
             col_perusahaan = next((c for c in df.columns if 'perusahaan' in c or 'company' in c or 'instansi' in c), None)
             
             if col_nama and col_hp:
-                # Standarisasi nomor HP ke format +62
+                # Standarisasi nomor HP yang aman dan presisi
                 def clean_phone(val):
                     val_str = str(val).strip()
                     if val_str.endswith('.0'):
@@ -106,15 +105,16 @@ with tab2:
                     val_str = ''.join(filter(str.isdigit, val_str))
                     if val_str.startswith('0'):
                         val_str = '62' + val_str[1:]
-                    elif val_str.startswith('+62'):
-                        val_str = val_str[1:]
+                    elif val_str.startswith('62'):
+                        pass
+                    elif val_str.startswith('8'):
+                        val_str = '62' + val_str
                     return val_str
 
                 df['cleaned_hp'] = df[col_hp].apply(clean_phone)
                 
-                # Menyiapkan variabel tambahan jika kolomnya tidak ada di excel
-                df['final_jabatan'] = df[col_jabatan] if col_jabatan else "Profesional"
-                df['final_perusahaan'] = df[col_perusahaan] if col_perusahaan else "Klien"
+                jabatan_vals = df[col_jabatan] if col_jabatan else ["Profesional"] * len(df)
+                perusahaan_vals = df[col_perusahaan] if col_perusahaan else ["Klien"] * len(df)
                 
                 st.markdown("### Preview Data Prospek:")
                 st.dataframe(df[[col_nama, col_hp, 'cleaned_hp']].head())
@@ -123,15 +123,15 @@ with tab2:
                 st.markdown("### 📥 Download Kontak VCF")
                 st.markdown(f"Total data siap diunduh ke HP: **{len(df)}** dari **{len(df)}** data.")
                 
-                # Pembuatan VCF dengan Nama, Nomor, Jabatan, dan Perusahaan
+                # Pembuatan VCF lengkap dengan format standar vCard (FN, TEL, TITLE, ORG)
                 vcf_data = []
-                for _, row in df.iterrows():
+                for idx, row in df.iterrows():
                     name = str(row[col_nama])
                     phone = str(row['cleaned_hp'])
-                    title = str(row['final_jabatan'])
-                    org = str(row['final_perusahaan'])
+                    title = str(jabatan_vals.iloc[idx]) if hasattr(jabatan_vals, 'iloc') else str(jabatan_vals)
+                    org = str(perusahaan_vals.iloc[idx]) if hasattr(perusahaan_vals, 'iloc') else str(perusahaan_vals)
                     
-                    vcf_card = f"BEGIN:VCARD\nVERSION:3.0\nFN:{name}\nTEL:{phone}\nTITLE:{title}\nORG:{org}\nEND:VCARD\n"
+                    vcf_card = f"BEGIN:VCARD\nVERSION:3.0\nFN:{name}\nTEL:+{phone}\nTITLE:{title}\nORG:{org}\nEND:VCARD\n"
                     vcf_data.append(vcf_card)
                 
                 vcf_string = "".join(vcf_data)
@@ -155,7 +155,6 @@ with tab2:
                     nama_prospek = str(row[col_nama])
                     no_hp_prospek = str(row['cleaned_hp'])
                     
-                    # Personalisasi pesan
                     custom_msg = message_template.replace("{Nama}", nama_prospek)
                     encoded_message = urllib.parse.quote(custom_msg)
                     wa_link = f"https://wa.me/{no_hp_prospek}?text={encoded_message}"
