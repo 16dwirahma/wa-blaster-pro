@@ -121,7 +121,7 @@ with tab2:
                 st.markdown("### 📥 Download Kontak VCF")
                 st.markdown(f"Total data siap diunduh ke HP: **{len(df)}** dari **{len(df)}** data.")
                 
-                # Pembuatan VCF Bersih: Nama Asli (FN), Jabatan (TITLE), Perusahaan (ORG), dan NOTE pendukung
+                # Pembuatan VCF dengan format TEL:+{phone} agar terbaca sempurna oleh WhatsApp & HP
                 vcf_data = []
                 for _, row in df.iterrows():
                     name = str(row[col_nama]).strip() if pd.notna(row[col_nama]) else ""
@@ -134,7 +134,7 @@ with tab2:
                         f"VERSION:3.0\n"
                         f"FN:{name}\n"
                         f"N:;{name};;;\n"
-                        f"TEL:{phone}\n"
+                        f"TEL:+{phone}\n"
                         f"TITLE:{title}\n"
                         f"ORG:{org}\n"
                         f"NOTE:Jabatan: {title} | PT: {org}\n"
