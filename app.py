@@ -121,7 +121,7 @@ with tab2:
                 st.markdown("### 📥 Download Kontak VCF")
                 st.markdown(f"Total data siap diunduh ke HP: **{len(df)}** dari **{len(df)}** data.")
                 
-                # Pembuatan VCF Presisi: Nama, Nomor HP (62...), Jabatan (TITLE), Perusahaan (ORG)
+                # Pembuatan VCF Presisi: Nama, Nomor HP (62...), Jabatan (TITLE), Perusahaan (ORG), serta NOTE Cadangan agar terbaca di semua HP
                 vcf_data = []
                 for _, row in df.iterrows():
                     name = str(row[col_nama]).strip() if pd.notna(row[col_nama]) else ""
@@ -129,7 +129,16 @@ with tab2:
                     title = str(row[col_jabatan]).strip() if col_jabatan and pd.notna(row[col_jabatan]) else "Profesional"
                     org = str(row[col_pt]).strip() if col_pt and pd.notna(row[col_pt]) else "Klien"
                     
-                    vcf_card = f"BEGIN:VCARD\nVERSION:3.0\nFN:{name}\nTEL:{phone}\nTITLE:{title}\nORG:{org}\nEND:VCARD\n"
+                    vcf_card = (
+                        f"BEGIN:VCARD\n"
+                        f"VERSION:3.0\n"
+                        f"FN:{name}\n"
+                        f"TEL:{phone}\n"
+                        f"TITLE:{title}\n"
+                        f"ORG:{org}\n"
+                        f"NOTE:Jabatan: {title} | Perusahaan: {org}\n"
+                        f"END:VCARD\n"
+                    )
                     vcf_data.append(vcf_card)
                 
                 vcf_string = "".join(vcf_data)
@@ -147,7 +156,7 @@ with tab2:
                 default_template = "Halo Bapak/Ibu {Nama},\n\nPerkenankan saya Dwi dari Bank CTBC. Kami ingin menginformasikan fasilitas Pinjaman Tanpa Agunan (KTA) dengan bunga ringan."
                 message_template = st.text_area("Template Pesan WhatsApp (Gunakan tag {Nama}):", value=default_template, height=120)
                 
-                st.markdown("### 📋 Daftar Aksi Kirim WhatsApp (Lengkap Nama, Nomor, Jabatan, PT):")
+                st.markdown("### 📋 Daftar Aksi Kirim WhatsApp:")
                 
                 for _, row in df.iterrows():
                     nama_prospek = str(row[col_nama]) if pd.notna(row[col_nama]) else "-"
