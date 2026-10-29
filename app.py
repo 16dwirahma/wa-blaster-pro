@@ -63,7 +63,7 @@ with tab1:
                         model = genai.GenerativeModel('gemini-1.5-flash')
                         prompt = (
                             "Ekstrak data kontak dari gambar ini ke dalam format tabel bersih "
-                            "dengan kolom: Nama, Jabatan, Perusahaan, No_HP. "
+                            "dengan kolom: nama, no_hp, nama_pt, jabatan. "
                             "Pastikan nomor HP diawali dengan format internasional (contoh: 628...). "
                             "Berikan dalam bentuk tabel markdown."
                         )
@@ -87,16 +87,16 @@ with tab2:
             
             st.success(f"File berhasil dimuat! Total baris data: {len(df)}")
             
-            # Map pencarian header secara fleksibel (mendukung format Prospect Name, Position, Company / Institution, Phone Number)
-            cols_map = {str(c).strip().lower(): c for c in df.columns}
+            # Normalisasi Header Otomatis agar cocok dengan file Excel (nama, no_hp, nama_pt, jabatan)
+            df.columns = [str(col).strip().lower() for col in df.columns]
             
-            col_nama = next((cols_map[k] for k in cols_map if any(x in k for x in ['prospect name', 'nama', 'name'])), None)
-            col_hp = next((cols_map[k] for k in cols_map if any(x in k for x in ['phone number', 'phone', 'hp', 'no_hp', 'whatsapp', 'telp'])), None)
-            col_jabatan = next((cols_map[k] for k in cols_map if any(x in k for x in ['position', 'jabatan', 'title', 'posisi'])), None)
-            col_perusahaan = next((cols_map[k] for k in cols_map if any(x in k for x in ['company', 'institution', 'perusahaan', 'instansi'])), None)
+            col_nama = next((c for c in df.columns if 'nama' in c and 'pt' not in c), None)
+            col_hp = next((c for c in df.columns if 'hp' in c or 'phone' in c or 'whatsapp' in c or 'telp' in c), None)
+            col_pt = next((c for c in df.columns if 'pt' in c or 'perusahaan' in c or 'company' in c or 'institution' in c), None)
+            col_jabatan = next((c for c in df.columns if 'jabatan' in c or 'title' in c or 'position' in c or 'posisi' in c), None)
             
             if col_nama and col_hp:
-                # Standarisasi nomor HP khusus format '62' tanpa tanda '+'
+                # Standarisasi nomor HP: tambahkan 62 di depan jika diawali angka 8, atau tangani 0 / 62
                 def clean_phone(val):
                     val_str = str(val).strip()
                     if val_str.endswith('.0'):
@@ -112,25 +112,24 @@ with tab2:
 
                 df['cleaned_hp'] = df[col_hp].apply(clean_phone)
                 
-                # Menampilkan Preview Data Asli
-                preview_cols = [col_nama, col_hp, 'cleaned_hp']
-                if col_jabatan: preview_cols.append(col_jabatan)
-                if col_perusahaan: preview_cols.append(col_perusahaan)
-                
+                # Tampilkan Preview Data Prospek di Layar
                 st.markdown("### Preview Data Prospek:")
+                preview_cols = [col_nama, col_hp, 'cleaned_hp']
+                if col_pt: preview_cols.append(col_pt)
+                if col_jabatan: preview_cols.append(col_jabatan)
                 st.dataframe(df[preview_cols].head())
                 
                 st.markdown("---")
                 st.markdown("### 📥 Download Kontak VCF")
                 st.markdown(f"Total data siap diunduh ke HP: **{len(df)}** dari **{len(df)}** data.")
                 
-                # Pembuatan VCF Presisi: Nama, Nomor HP (62...), Jabatan, Perusahaan
+                # Pembuatan VCF Presisi: Nama, Nomor HP (62...), Jabatan (TITLE), Perusahaan (ORG)
                 vcf_data = []
                 for _, row in df.iterrows():
                     name = str(row[col_nama]).strip() if pd.notna(row[col_nama]) else ""
                     phone = str(row['cleaned_hp']).strip()
-                    title = str(row[col_jabatan]).strip() if col_jabatan and pd.notna(row[col_jabatan]) else ""
-                    org = str(row[col_perusahaan]).strip() if col_perusahaan and pd.notna(row[col_perusahaan]) else ""
+                    title = str(row[col_jabatan]).strip() if col_jabatan and pd.notna(row[col_jabatan]) else "Profesional"
+                    org = str(row[col_pt]).strip() if col_pt and pd.notna(row[col_pt]) else "Klien"
                     
                     vcf_card = f"BEGIN:VCARD\nVERSION:3.0\nFN:{name}\nTEL:{phone}\nTITLE:{title}\nORG:{org}\nEND:VCARD\n"
                     vcf_data.append(vcf_card)
@@ -168,6 +167,6 @@ with tab2:
                     st.divider()
                     
             else:
-                st.warning("⚠️ Kolom nama atau nomor HP tidak terdeteksi otomatis. Pastikan ada kolom Prospect Name/Nama dan Phone Number/No HP pada Excel Anda.")
+                st.warning("⚠️ Kolom 'nama' atau 'no_hp' tidak terdeteksi otomatis pada file Excel Anda.")
         except Exception as e:
-            st.error(f"Gagal membaca file Excel/CSV: {e}")
+            st.error(f"Gagal membaca file Excel/CSV: {e}")git add app.py
