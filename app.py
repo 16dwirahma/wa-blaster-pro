@@ -112,12 +112,10 @@ with tab2:
 
                 df['cleaned_hp'] = df[col_hp].apply(clean_phone)
                 
-                # Tampilkan Preview Data Prospek di Layar
+                # Tampilkan Preview Data Prospek di Layar (Tanpa kolom cleaned_hp)
                 st.markdown("### Preview Data Prospek:")
-                preview_cols = [col_nama, col_hp, 'cleaned_hp']
-                if col_pt: preview_cols.append(col_pt)
-                if col_jabatan: preview_cols.append(col_jabatan)
-                st.dataframe(df[preview_cols].head())
+                display_cols = [c for c in [col_nama, col_hp, col_pt, col_jabatan] if c is not None]
+                st.dataframe(df[display_cols].head())
                 
                 st.markdown("---")
                 st.markdown("### 📥 Download Kontak VCF")
@@ -149,21 +147,30 @@ with tab2:
                 default_template = "Halo Bapak/Ibu {Nama},\n\nPerkenankan saya Dwi dari Bank CTBC. Kami ingin menginformasikan fasilitas Pinjaman Tanpa Agunan (KTA) dengan bunga ringan."
                 message_template = st.text_area("Template Pesan WhatsApp (Gunakan tag {Nama}):", value=default_template, height=120)
                 
-                st.markdown("### 📋 Daftar Aksi Kirim WhatsApp:")
+                st.markdown("### 📋 Daftar Aksi Kirim WhatsApp (Lengkap Nama, Nomor, Jabatan, PT):")
                 
                 for _, row in df.iterrows():
-                    nama_prospek = str(row[col_nama])
-                    no_hp_prospek = str(row['cleaned_hp'])
+                    nama_prospek = str(row[col_nama]) if pd.notna(row[col_nama]) else "-"
+                    no_hp_bersih = str(row['cleaned_hp'])
+                    no_hp_tampil = str(row[col_hp]) if pd.notna(row[col_hp]) else "-"
+                    jabatan_prospek = str(row[col_jabatan]) if col_jabatan and pd.notna(row[col_jabatan]) else "-"
+                    pt_prospek = str(row[col_pt]) if col_pt and pd.notna(row[col_pt]) else "-"
                     
                     custom_msg = message_template.replace("{Nama}", nama_prospek)
                     encoded_message = urllib.parse.quote(custom_msg)
-                    wa_link = f"https://wa.me/{no_hp_prospek}?text={encoded_message}"
+                    wa_link = f"https://wa.me/{no_hp_bersih}?text={encoded_message}"
                     
-                    col1, col2 = st.columns([4, 1])
+                    col1, col2 = st.columns([5, 1])
                     with col1:
-                        st.markdown(f"👤 **{nama_prospek}** ({no_hp_prospek}) | ✅ Match")
+                        st.markdown(
+                            f"👤 **{nama_prospek}**<br>"
+                            f"📞 No HP: `{no_hp_tampil}` (WA: `{no_hp_bersih}`)<br>"
+                            f"💼 Jabatan: *{jabatan_prospek}*<br>"
+                            f"🏢 Perusahaan: **{pt_prospek}** | ✅ Match",
+                            unsafe_allow_html=True
+                        )
                     with col2:
-                        st.markdown(f"[💬 Kirim WA]({wa_link})", unsafe_allow_html=True)
+                        st.markdown(f"<br>[💬 Kirim WA]({wa_link})", unsafe_allow_html=True)
                     st.divider()
                     
             else:
