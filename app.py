@@ -1,175 +1,173 @@
-import io
-import re
-import urllib.parse
+import streamlit as st
+import pandas as pd
 import google.generativeai as genai
 from PIL import Image
-import pandas as pd
-import streamlit as st
+import io
+import urllib.parse
 
+# Konfigurasi Halaman Streamlit
 st.set_page_config(
     page_title="WA Blaster Pro - Validasi LinkedIn & Kontak VCF",
     page_icon="📱",
-    layout="wide",
+    layout="wide"
 )
 
-st.title("📱 WA Blaster Pro - Validasi LinkedIn & Kontak VCF")
-
-# Ambil API Key dari Streamlit Secrets
+# Inisialisasi API Key Gemini
+# Cek apakah API key tersedia di Streamlit Secrets atau input manual di sidebar
+api_key = None
 try:
-    gemini_api_key = st.secrets["GEMINI_API_KEY"]
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY"]
 except Exception:
-    gemini_api_key = ""
+    pass
 
-with st.sidebar:
-    st.subheader("🔑 Konfigurasi API & Device")
-    if not gemini_api_key:
-        gemini_api_key = st.text_input("Masukkan Gemini API Key:", type="password")
+st.sidebar.markdown("### 🔑 Konfigurasi API & Device")
+if api_key:
+    genai.configure(api_key=api_key)
+    st.sidebar.success("Gemini API Key dimuat otomatis dari sistem!")
+else:
+    user_api_key = st.sidebar.text_input("Masukkan Gemini API Key:", type="password")
+    if user_api_key:
+        genai.configure(api_key=user_api_key)
+        api_key = user_api_key
+        st.sidebar.success("API Key berhasil disimpan!")
     else:
-        st.success("🔑 Gemini API Key dimuat otomatis dari sistem!")
+        st.sidebar.warning("Silakan masukkan Gemini API Key terlebih dahulu.")
 
-    st.divider()
-    st.subheader("⚙️ Setting Device WA")
-    nomor_utama = st.text_input("Nomor Utama (WA 1):", value="625888140182")
-    if nomor_utama:
-        st.success(f"WA Active: {nomor_utama}")
+st.sidebar.markdown("---")
+st.sidebar.markdown("### ⚙️ Setting Device WA")
+default_wa = st.sidebar.text_input("Nomor Utama (WA 1):", value="625888140182")
+st.sidebar.markdown(f"<div style='background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; text-align: center;'><b>WA Active: {default_wa}</b></div>", unsafe_allow_html=True)
 
-tab1, tab2 = st.tabs(["📸 Scan Hardcopy (Foto Doc)", "📂 Upload Excel / Data Riset"])
+# Judul Utama Aplikasi
+st.markdown("## 📱 WA Blaster Pro - Validasi LinkedIn & Kontak VCF")
+st.markdown("---")
 
-# --- TAB 1: OCR HARDCOPY DENGAN GEMINI AI ---
+# Tab Menu Utama
+tab1, tab2 = st.tabs(["📸 Scan Hardcopy (Foto Doc)", "📁 Upload Excel / Data Riset"])
+
+# --- TAB 1: OCR HARDCOPY ---
 with tab1:
-    st.subheader("📸 Upload Foto Dokumen Hardcopy Database")
+    st.markdown("### 📸 Upload Foto Dokumen Hardcopy Database")
     uploaded_image = st.file_uploader("Pilih foto dokumen (JPG/PNG)", type=["jpg", "jpeg", "png"])
-    if uploaded_image is not None:
-        st.image(uploaded_image, caption="Preview Dokumen", use_container_width=True)
-        if st.button("🚀 Process & Extract Data dengan AI"):
-            if not gemini_api_key:
-                st.error("Silakan masukkan Gemini API Key terlebih dahulu!")
-            else:
-                with st.spinner("Membaca dokumen..."):
-                    try:
-                        image = Image.open(uploaded_image)
-                        genai.configure(api_key=gemini_api_key)
-                        model = genai.GenerativeModel("gemini-1.5-flash")
-                        prompt = "Ekstrak data tabel dari foto dokumen ini ke format CSV murni dengan kolom: nama, no_hp, nama_pt, jabatan."
-                        response = model.generate_content([image, prompt])
-                        csv_text = response.text.strip()
-                        csv_text = re.sub(r"```(csv)?", "", csv_text).strip()
-                        st.session_state['df_prospek'] = pd.read_csv(io.StringIO(csv_text))
-                        st.success("Data berhasil diekstrak!")
-                    except Exception as e:
-                        st.error(f"Gagal memproses: {e}")
-
-# --- TAB 2: UPLOAD EXCEL / DATA RISET ---
-with tab2:
-    st.subheader("📂 Upload File Excel / Data Riset")
-    uploaded_file = st.file_uploader("Unggah file Excel data prospek", type=["xlsx", "csv"])
-    if uploaded_file is not None:
-        if uploaded_file.name.endswith(".csv"):
-            st.session_state['df_prospek'] = pd.read_csv(uploaded_file)
-        else:
-            st.session_state['df_prospek'] = pd.read_excel(uploaded_file)
-        st.success("Data berhasil dimuat!")
-
-# --- OLAH DATA PROSPEK, VCF, & BLASTING ---
-if 'df_prospek' in st.session_state and st.session_state['df_prospek'] is not None:
-    df = st.session_state['df_prospek']
     
-    # Otomatisasi Header: lowercase & spasi jadi underscore
-    col_mapping = {}
-    for col in df.columns:
-        clean_col = str(col).strip().lower().replace(" ", "_")
-        col_mapping[col] = clean_col
-    df = df.rename(columns=col_mapping)
-
-    nama_col = next((c for c in df.columns if "nama" in c or "name" in c), None)
-    hp_col = next((c for c in df.columns if "hp" in c or "phone" in c or "telp" in c or "wa" in c), None)
-
-    if nama_col and hp_col:
-        st.success(f"✅ Kolom '{nama_col}' dan '{hp_col}' terdeteksi secara otomatis!")
+    if uploaded_image is not None:
+        image = Image.open(uploaded_image)
+        st.image(image, caption="Dokumen Prospek Terunggah", use_container_width=True)
         
-        df = df.rename(columns={nama_col: "nama", hp_col: "no_hp"})
+        if st.button("🚀 Proses OCR dengan Gemini AI"):
+            if not api_key:
+                st.error("Gemini API Key belum dikonfigurasi!")
+            else:
+                with st.spinner("Mengekstrak data prospek dari gambar..."):
+                    try:
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        prompt = (
+                            "Ekstrak data kontak dari gambar ini ke dalam format tabel bersih "
+                            "dengan kolom: Nama, Jabatan, Perusahaan, No_HP. "
+                            "Pastikan nomor HP diawali dengan format internasional (contoh: 628...). "
+                            "Berikan dalam bentuk tabel markdown."
+                        )
+                        response = model.generate_content([image, prompt])
+                        st.markdown("### Hasil Ekstraksi OCR:")
+                        st.markdown(response.text)
+                    except Exception as e:
+                        st.error(f"Terjadi kesalahan saat memproses gambar: {e}")
 
-        if "nama_pt" not in df.columns:
-            df["nama_pt"] = "-"
-        if "jabatan" not in df.columns:
-            df["jabatan"] = "-"
-        if "match_linkedin" not in df.columns:
-            df["match_linkedin"] = True
-        if "catatan_update" not in df.columns:
-            df["catatan_update"] = ""
-
-        st.markdown("### 📋 Tabel Interaktif Prospek")
-        edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
-
-        df_matched = edited_df[edited_df["match_linkedin"] == True]
-
-        def generate_vcf(dataframe):
-            vcf_lines = []
-            for _, row in dataframe.iterrows():
-                name = str(row["nama"])
-                phone_raw = str(row["no_hp"])
-                phone = re.sub(r"\D", "", phone_raw)
-                if phone.startswith("0"):
-                    phone = "62" + phone[1:]
-                elif phone.startswith("8"):
-                    phone = "62" + phone
-
-                vcf_lines.append("BEGIN:VCARD")
-                vcf_lines.append("VERSION:3.0")
-                vcf_lines.append(f"FN:{name}")
-                vcf_lines.append(f"TEL:{phone}")
-                vcf_lines.append("END:VCARD")
-            return "\n".join(vcf_lines)
-
-        vcf_data = generate_vcf(df_matched)
-
-        st.markdown("---")
-        col_info, col_btn = st.columns([3, 1])
-        with col_info:
-            st.subheader("📥 Download Kontak VCF")
-            st.write(f"Total data siap diunduh ke HP: **{len(df_matched)}** dari **{len(edited_df)}** data.")
-        with col_btn:
-            st.download_button(
-                label="📥 Download VCF",
-                data=vcf_data,
-                file_name="prospek_wa_blaster.vcf",
-                mime="text/vcard",
-            )
-        st.markdown("---")
-
-        st.subheader("💬 Template Pesan & Blasting WhatsApp")
-        template_pesan = st.text_area(
-            "Template Pesan WhatsApp (Gunakan tag {Nama}):",
-            value="Halo Bapak/Ibu {Nama},\n\nPerkenankan saya Dwi dari Bank CTBC. Kami ingin menginformasikan fasilitas Pinjaman Tanpa Agunan (KTA) dengan bunga ringan.\n\nApakah ada waktu sejenak untuk berdiskusi?",
-        )
-
-        st.markdown("### 📋 Daftar Aksi Kirim WhatsApp:")
-        for index, row in edited_df.iterrows():
-            nama = str(row["nama"])
-            no_hp_raw = str(row["no_hp"])
+# --- TAB 2: UPLOAD EXCEL ---
+with tab2:
+    st.markdown("### 📁 Upload File Excel Database Prospek")
+    uploaded_file = st.file_uploader("Pilih file Excel (.xlsx) atau CSV", type=["xlsx", "csv"])
+    
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
             
-            no_hp = re.sub(r"\D", "", no_hp_raw)
-            if no_hp.startswith("0"):
-                no_hp = "62" + no_hp[1:]
-            elif no_hp.startswith("8"):
-                no_hp = "62" + no_hp
+            st.success(f"File berhasil dimuat! Total baris data: {len(df)}")
+            
+            # Normalisasi Header Otomatis
+            df.columns = [str(col).strip().lower() for col in df.columns]
+            
+            # Deteksi kolom secara fleksibel
+            col_nama = next((c for c in df.columns if 'nama' in c or 'name' in c), None)
+            col_hp = next((c for c in df.columns if 'hp' in c or 'phone' in c or 'whatsapp' in c or 'telp' in c), None)
+            col_jabatan = next((c for c in df.columns if 'jabatan' in c or 'title' in c or 'posisi' in c), None)
+            col_perusahaan = next((c for c in df.columns if 'perusahaan' in c or 'company' in c or 'instansi' in c), None)
+            
+            if col_nama and col_hp:
+                # Standarisasi nomor HP ke format +62
+                def clean_phone(val):
+                    val_str = str(val).strip()
+                    if val_str.endswith('.0'):
+                        val_str = val_str[:-2]
+                    val_str = ''.join(filter(str.isdigit, val_str))
+                    if val_str.startswith('0'):
+                        val_str = '62' + val_str[1:]
+                    elif val_str.startswith('+62'):
+                        val_str = val_str[1:]
+                    return val_str
 
-            is_match = row["match_linkedin"]
-
-            pesan_personal = template_pesan.replace("{Nama}", nama)
-            encoded_message = urllib.parse.quote(pesan_personal)
-            wa_link = f"https://wa.me/{no_hp}?text={encoded_message}"
-
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                status_badge = "✅ Match" if is_match else "❌ Skipped"
-                st.markdown(f"👤 **{nama}** ({no_hp}) | {status_badge}")
-            with col2:
-                if is_match:
-                    st.markdown(f"[💬 Kirim WA]({wa_link})", unsafe_allow_html=True)
-                else:
-                    st.markdown("*Dilewati*")
-            st.divider()
-
-    else:
-        st.warning("⚠️ Kolom 'nama' atau 'no_hp' tidak terdeteksi otomatis. Pastikan ada kolom nama/no_hp pada Excel Anda.")
+                df['cleaned_hp'] = df[col_hp].apply(clean_phone)
+                
+                # Menyiapkan variabel tambahan jika kolomnya tidak ada di excel
+                df['final_jabatan'] = df[col_jabatan] if col_jabatan else "Profesional"
+                df['final_perusahaan'] = df[col_perusahaan] if col_perusahaan else "Klien"
+                
+                st.markdown("### Preview Data Prospek:")
+                st.dataframe(df[[col_nama, col_hp, 'cleaned_hp']].head())
+                
+                st.markdown("---")
+                st.markdown("### 📥 Download Kontak VCF")
+                st.markdown(f"Total data siap diunduh ke HP: **{len(df)}** dari **{len(df)}** data.")
+                
+                # Pembuatan VCF dengan Nama, Nomor, Jabatan, dan Perusahaan
+                vcf_data = []
+                for _, row in df.iterrows():
+                    name = str(row[col_nama])
+                    phone = str(row['cleaned_hp'])
+                    title = str(row['final_jabatan'])
+                    org = str(row['final_perusahaan'])
+                    
+                    vcf_card = f"BEGIN:VCARD\nVERSION:3.0\nFN:{name}\nTEL:{phone}\nTITLE:{title}\nORG:{org}\nEND:VCARD\n"
+                    vcf_data.append(vcf_card)
+                
+                vcf_string = "".join(vcf_data)
+                
+                st.download_button(
+                    label="📥 Download VCF",
+                    data=vcf_string,
+                    file_name="kontak_prospek_wa_blaster.vcf",
+                    mime="text/vcard"
+                )
+                
+                st.markdown("---")
+                st.markdown("### 💬 Template Pesan & Blasting WhatsApp")
+                
+                default_template = "Halo Bapak/Ibu {Nama},\n\nPerkenankan saya Dwi dari Bank CTBC. Kami ingin menginformasikan fasilitas Pinjaman Tanpa Agunan (KTA) dengan bunga ringan."
+                message_template = st.text_area("Template Pesan WhatsApp (Gunakan tag {Nama}):", value=default_template, height=120)
+                
+                st.markdown("### 📋 Daftar Aksi Kirim WhatsApp:")
+                
+                for _, row in df.iterrows():
+                    nama_prospek = str(row[col_nama])
+                    no_hp_prospek = str(row['cleaned_hp'])
+                    
+                    # Personalisasi pesan
+                    custom_msg = message_template.replace("{Nama}", nama_prospek)
+                    encoded_message = urllib.parse.quote(custom_msg)
+                    wa_link = f"https://wa.me/{no_hp_prospek}?text={encoded_message}"
+                    
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.markdown(f"👤 **{nama_prospek}** ({no_hp_prospek}) | ✅ Match")
+                    with col2:
+                        st.markdown(f"[💬 Kirim WA]({wa_link})", unsafe_allow_html=True)
+                    st.divider()
+                    
+            else:
+                st.warning("⚠️ Kolom 'nama' atau 'no_hp' tidak terdeteksi otomatis. Pastikan ada kolom nama/no_hp pada Excel Anda.")
+        except Exception as e:
+            st.error(f"Gagal membaca file Excel/CSV: {e}")
