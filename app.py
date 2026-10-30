@@ -36,7 +36,6 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.markdown("### ⚙️ Setting Multi-Akun WhatsApp (6 Akun)")
 
-# Daftar 6 Akun WhatsApp Rotasi Anda (Bisa diganti nomor aslinya sesuai kebutuhan)
 list_akun_wa = {
     "Akun WA 1 (Utama)": "625888140182",
     "Akun WA 2": "625220974497",
@@ -56,7 +55,7 @@ st.markdown("## 📱 WA Blaster Pro - Multi-Account & VCF Generator")
 st.markdown("---")
 
 # Tab Menu Utama
-tab1, tab2 = st.tabs(["📸 Scan Hardcopy (Foto Doc)", "📁 Upload Excel / Data Riset"])
+tab1, tab2 = tab1, tab2 = st.tabs(["📸 Scan Hardcopy (Foto Doc)", "📁 Upload Excel / Data Riset"])
 
 # --- TAB 1: OCR HARDCOPY ---
 with tab1:
@@ -75,47 +74,145 @@ with tab1:
                     try:
                         model = genai.GenerativeModel('gemini-1.5-flash')
                         prompt = (
-                            "Ekstrak data kontak dari gambar ini ke dalam format tabel bersih "
-                            "dengan kolom: nama, no_hp, nama_pt, jabatan. "
-                            "Pastikan nomor HP diawali dengan format internasional (contoh: 628...). "
-                            "Berikan dalam bentuk tabel markdown."
+                            "Ekstrak data kontak dari gambar ini. Berikan hasilnya dalam format CSV murni "
+                            "dengan header persis: nama,no_hp,nama_pt,jabatan. "
+                            "Jangan sertakan teks pengantar atau penutup lain, langsung keluarkan format CSV baris demi baris."
                         )
                         response = model.generate_content([image, prompt])
-                        st.markdown("### Hasil Ekstraksi OCR:")
-                        st.markdown(response.text)
+                        csv_text = response.text.strip()
+                        
+                        if "```" in csv_text:
+                            csv_text = csv_text.split("```")[1]
+                            if csv_text.startswith("csv"):
+                                csv_text = csv_text[3:].strip()
+                        
+                        df_ocr = pd.read_csv(io.StringIO(csv_text))
+                        st.session_state['df_ocr'] = df_ocr
+                        st.success("OCR Berhasil Diekstrak!")
                     except Exception as e:
-                        st.error(f"Terjadi kesalahan saat memproses gambar: {e}")
+                        st.error(f"Gagal memproses OCR atau format data tidak sesuai: {e}")
+
+        if 'df_ocr' in st.session_state:
+            df = st.session_state['df_ocr']
+            st.markdown("### Hasil Ekstraksi Data Prospek:")
+            st.dataframe(df.head())
+            
+            df.columns = [str(col).strip().lower() for col in df.columns]
+            col_nama = next((c for c in df.columns if 'nama' in c and 'pt' not in c), 'nama')
+            col_hp = next((c for c in df.columns if 'hp' in c or 'phone' in c), 'no_hp')
+            col_pt = next((c for c in df.columns if 'pt' in c or 'perusahaan' in c or 'kantor' in c), 'nama_pt')
+            col_jabatan = next((c for c in df.columns if 'jabatan' in c or 'title' in c), 'jabatan')
+
+            def clean_phone(val):
+                val_str = str(val).strip()
+                if val_str.endswith('.0'):
+                    val_str = val_str[:-2]
+                val_str = ''.join(filter(str.isdigit, val_str))
+                if val_str.startswith('0'):
+                    val_str = '62' + val_str[1:]
+                elif val_str.startswith('62'):
+                    pass
+                elif val_str.startswith('8'):
+                    val_str = '62' + val_str
+                return val_str
+
+            df['cleaned_hp'] = df[col_hp].apply(clean_phone)
+
+            st.markdown("---")
+            st.markdown("### 📥 Download Kontak VCF dari Hasil OCR")
+            vcf_data = []
+            for _, row in df.iterrows():
+                name = str(row[col_nama]).strip() if pd.notna(row[col_nama]) else ""
+                phone = str(row['cleaned_hp']).strip()
+                title = str(row[col_jabatan]).strip() if col_jabatan and pd.notna(row[col_jabatan]) else ""
+                org = str(row[col_pt]).strip() if col_pt and pd.notna(row[col_pt]) else ""
+                
+                vcf_card = (
+                    f"BEGIN:VCARD\n"
+                    f"VERSION:3.0\n"
+                    f"FN:{name}\n"
+                    f"N:;{name};;;\n"
+                    f"TEL:+{phone}\n"
+                    f"TITLE:{title}\n"
+                    f"ORG:{org}\n"
+                    f"NOTE:Jabatan: {title} | PT: {org}\n"
+                    f"END:VCARD\n"
+                )
+                vcf_data.append(vcf_card)
+            
+            vcf_string = "".join(vcf_data)
+            st.download_button(
+                label="📥 Download VCF (OCR)",
+                data=vcf_string,
+                file_name="kontak_ocr_prospek.vcf",
+                mime="text/vcard"
+            )
+
+            st.markdown("---")
+            st.markdown("### 💬 Template Pesan & Blasting WhatsApp")
+            default_template = (
+                "Halo Bapak/Ibu {Nama},\n\n"
+                "Perkenankan saya Dwi dari Bank CTBC. Kami ingin menginformasikan fasilitas Pinjaman Tanpa Agunan (KTA) dengan bunga ringan dan proses cepat tanpa jaminan.\n\n"
+                "Apakah ada waktu sejenak untuk berdiskusi lebih lanjut?"
+            )
+            message_template = st.text_area("Template Pesan WhatsApp:", value=default_template, height=140, key="ocr_template")
+
+            st.markdown(f"### 📋 Daftar Aksi Riset LinkedIn & Kirim WhatsApp (Akun: `{custom_wa_input}`):")
+            for _, row in df.iterrows():
+                nama_prospek = str(row[col_nama]) if pd.notna(row[col_nama]) else "-"
+                no_hp_bersih = str(row['cleaned_hp'])
+                no_hp_tampil = str(row[col_hp]) if pd.notna(row[col_hp]) else "-"
+                jabatan_prospek = str(row[col_jabatan]) if pd.notna(row[col_jabatan]) else "-"
+                pt_prospek = str(row[col_pt]) if pd.notna(row[col_pt]) else "-"
+                
+                # Pembuatan keyword & link pencarian LinkedIn otomatis
+                linkedin_keyword = f"{nama_prospek} linkedin at {pt_prospek}"
+                encoded_linkedin_query = urllib.parse.quote(linkedin_keyword)
+                linkedin_link = f"https://www.google.com/search?q={encoded_linkedin_query}"
+
+                custom_msg = message_template.replace("{Nama}", nama_prospek)
+                encoded_message = urllib.parse.quote(custom_msg)
+                wa_link = f"https://wa.me/{no_hp_bersih}?text={encoded_message}"
+                
+                col1, col2, col3 = st.columns([4, 1, 1])
+                with col1:
+                    st.markdown(
+                        f"👤 **{nama_prospek}**<br>"
+                        f"📞 No HP: `{no_hp_tampil}` (WA: `{no_hp_bersih}`)<br>"
+                        f"💼 Jabatan: *{jabatan_prospek}*<br>"
+                        f"🏢 Perusahaan: **{pt_prospek}**",
+                        unsafe_allow_html=True
+                    )
+                with col2:
+                    st.markdown(f"<br>[🔍 Cari LinkedIn]({linkedin_link})", unsafe_allow_html=True)
+                with col3:
+                    st.markdown(f"<br>[💬 Kirim WA]({wa_link})", unsafe_allow_html=True)
+                st.divider()
 
 # --- TAB 2: UPLOAD EXCEL ---
 with tab2:
     st.markdown("### 📁 Upload File Excel Database Prospek")
-    
-    # Gunakan uploader dengan penanganan state bersih agar file baru langsung menggantikan file lama
     uploaded_file = st.file_uploader("Pilih file Excel (.xlsx) atau CSV", type=["xlsx", "csv"], key="excel_uploader_fresh")
     
     if uploaded_file is not None:
         try:
-            # Baca file Excel atau CSV secara langsung berdasarkan uploader aktif
             if uploaded_file.name.endswith('.csv'):
                 df = pd.read_csv(uploaded_file)
             else:
                 xls = pd.ExcelFile(uploaded_file)
-                # Ambil sheet pertama secara otomatis
                 sheet_to_read = xls.sheet_names[0]
                 df = pd.read_excel(uploaded_file, sheet_name=sheet_to_read)
             
             st.success(f"File **{uploaded_file.name}** berhasil dimuat! Total baris data: {len(df)}")
             
-            # Normalisasi Header Otomatis agar fleksibel mendeteksi kolom nama, no_hp, nama_pt, jabatan
             df.columns = [str(col).strip().lower() for col in df.columns]
             
             col_nama = next((c for c in df.columns if 'nama' in c and 'pt' not in c), None)
             col_hp = next((c for c in df.columns if 'hp' in c or 'phone' in c or 'whatsapp' in c or 'telp' in c), None)
-            col_pt = next((c for c in df.columns if 'pt' in c or 'perusahaan' in c or 'company' in c or 'institution' in c), None)
+            col_pt = next((c for c in df.columns if 'pt' in c or 'perusahaan' in c or 'company' in c or 'institution' in c or 'kantor' in c), None)
             col_jabatan = next((c for c in df.columns if 'jabatan' in c or 'title' in c or 'position' in c or 'posisi' in c), None)
             
             if col_nama and col_hp:
-                # Standarisasi nomor HP: tambahkan 62 di depan jika diawali angka 8
                 def clean_phone(val):
                     val_str = str(val).strip()
                     if val_str.endswith('.0'):
@@ -131,7 +228,6 @@ with tab2:
 
                 df['cleaned_hp'] = df[col_hp].apply(clean_phone)
                 
-                # Tampilkan Preview Data Prospek dari file baru
                 st.markdown("### Preview Data Prospek:")
                 display_cols = [c for c in [col_nama, col_hp, col_pt, col_jabatan] if c is not None]
                 st.dataframe(df[display_cols].head())
@@ -140,7 +236,6 @@ with tab2:
                 st.markdown("### 📥 Download Kontak VCF")
                 st.markdown(f"Total data siap diunduh ke HP: **{len(df)}** dari **{len(df)}** data.")
                 
-                # Pembuatan VCF dengan format TEL:+{phone} agar sinkron dengan WhatsApp
                 vcf_data = []
                 for _, row in df.iterrows():
                     name = str(row[col_nama]).strip() if pd.notna(row[col_nama]) else ""
@@ -180,29 +275,36 @@ with tab2:
                 )
                 message_template = st.text_area("Template Pesan WhatsApp (Gunakan tag {Nama}):", value=default_template, height=140)
                 
-                st.markdown(f"### 📋 Daftar Aksi Kirim WhatsApp (Menggunakan Akun: `{custom_wa_input}`):")
+                st.markdown(f"### 📋 Daftar Aksi Riset LinkedIn & Kirim WhatsApp (Akun: `{custom_wa_input}`):")
                 
                 for _, row in df.iterrows():
                     nama_prospek = str(row[col_nama]) if pd.notna(row[col_nama]) else "-"
                     no_hp_bersih = str(row['cleaned_hp'])
                     no_hp_tampil = str(row[col_hp]) if pd.notna(row[col_hp]) else "-"
                     jabatan_prospek = str(row[col_jabatan]) if col_jabatan and pd.notna(row[col_jabatan]) else "-"
-                    pt_prospek = str(row[col_pt]) if col_pt and pd.notna(row[col_pt]) else "-"
+                    pt_prospek = str(row[col_pt]) if pd.notna(row[col_pt]) else "-"
                     
+                    # Pembuatan keyword & link pencarian LinkedIn otomatis
+                    linkedin_keyword = f"{nama_prospek} linkedin at {pt_prospek}"
+                    encoded_linkedin_query = urllib.parse.quote(linkedin_keyword)
+                    linkedin_link = f"https://www.google.com/search?q={encoded_linkedin_query}"
+
                     custom_msg = message_template.replace("{Nama}", nama_prospek)
                     encoded_message = urllib.parse.quote(custom_msg)
                     wa_link = f"https://wa.me/{no_hp_bersih}?text={encoded_message}"
                     
-                    col1, col2 = st.columns([5, 1])
+                    col1, col2, col3 = st.columns([4, 1, 1])
                     with col1:
                         st.markdown(
                             f"👤 **{nama_prospek}**<br>"
                             f"📞 No HP: `{no_hp_tampil}` (WA: `{no_hp_bersih}`)<br>"
                             f"💼 Jabatan: *{jabatan_prospek}*<br>"
-                            f"🏢 Perusahaan: **{pt_prospek}** | ✅ Match",
+                            f"🏢 Perusahaan: **{pt_prospek}**",
                             unsafe_allow_html=True
                         )
                     with col2:
+                        st.markdown(f"<br>[🔍 Cari LinkedIn]({linkedin_link})", unsafe_allow_html=True)
+                    with col3:
                         st.markdown(f"<br>[💬 Kirim WA]({wa_link})", unsafe_allow_html=True)
                     st.divider()
                     
