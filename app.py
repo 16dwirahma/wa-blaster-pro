@@ -36,6 +36,7 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.markdown("### ⚙️ Setting Multi-Akun WhatsApp (6 Akun)")
 
+# Daftar 6 Akun WhatsApp Rotasi Anda (Bisa disesuaikan nomor aslinya)
 list_akun_wa = {
     "Akun WA 1 (Utama)": "625888140182",
     "Akun WA 2": "625220974497",
@@ -55,18 +56,25 @@ st.markdown("## 📱 WA Blaster Pro - Multi-Account & VCF Generator")
 st.markdown("---")
 
 # Tab Menu Utama
-tab1, tab2 = tab1, tab2 = st.tabs(["📸 Scan Hardcopy (Foto Doc)", "📁 Upload Excel / Data Riset"])
+tab1, tab2 = st.tabs(["📸 Scan Hardcopy (Foto Doc)", "📁 Upload Excel / Data Riset"])
 
 # --- TAB 1: OCR HARDCOPY ---
 with tab1:
-    st.markdown("### 📸 Upload Foto Dokumen Hardcopy Database")
-    uploaded_image = st.file_uploader("Pilih foto dokumen (JPG/PNG)", type=["jpg", "jpeg", "png"], key="ocr_img")
+    st.markdown("### 📸 Scan Foto Dokumen Hardcopy Database")
+    
+    metode_scan = st.radio("Pilih Cara Masukkan Foto:", ["Upload dari Galeri", "Ambil Foto Langsung (Kamera HP)"], horizontal=True)
+    
+    uploaded_image = None
+    if metode_scan == "Upload dari Galeri":
+        uploaded_image = st.file_uploader("Pilih file foto (JPG/PNG)", type=["jpg", "jpeg", "png"], key="ocr_file")
+    else:
+        uploaded_image = st.camera_input("Jepret dokumen prospek Anda", key="ocr_cam")
     
     if uploaded_image is not None:
         image = Image.open(uploaded_image)
         st.image(image, caption="Dokumen Prospek Terunggah", use_container_width=True)
         
-        if st.button("🚀 Proses OCR dengan Gemini AI"):
+        if st.button("🚀 Proses OCR dengan Gemini AI", key="btn_ocr_exec"):
             if not api_key:
                 st.error("Gemini API Key belum dikonfigurasi!")
             else:
@@ -165,7 +173,6 @@ with tab1:
                 jabatan_prospek = str(row[col_jabatan]) if pd.notna(row[col_jabatan]) else "-"
                 pt_prospek = str(row[col_pt]) if pd.notna(row[col_pt]) else "-"
                 
-                # Pembuatan keyword & link pencarian LinkedIn otomatis
                 linkedin_keyword = f"{nama_prospek} linkedin at {pt_prospek}"
                 encoded_linkedin_query = urllib.parse.quote(linkedin_keyword)
                 linkedin_link = f"https://www.google.com/search?q={encoded_linkedin_query}"
@@ -284,7 +291,6 @@ with tab2:
                     jabatan_prospek = str(row[col_jabatan]) if col_jabatan and pd.notna(row[col_jabatan]) else "-"
                     pt_prospek = str(row[col_pt]) if pd.notna(row[col_pt]) else "-"
                     
-                    # Pembuatan keyword & link pencarian LinkedIn otomatis
                     linkedin_keyword = f"{nama_prospek} linkedin at {pt_prospek}"
                     encoded_linkedin_query = urllib.parse.quote(linkedin_keyword)
                     linkedin_link = f"https://www.google.com/search?q={encoded_linkedin_query}"
@@ -298,17 +304,4 @@ with tab2:
                         st.markdown(
                             f"👤 **{nama_prospek}**<br>"
                             f"📞 No HP: `{no_hp_tampil}` (WA: `{no_hp_bersih}`)<br>"
-                            f"💼 Jabatan: *{jabatan_prospek}*<br>"
-                            f"🏢 Perusahaan: **{pt_prospek}**",
-                            unsafe_allow_html=True
-                        )
-                    with col2:
-                        st.markdown(f"<br>[🔍 Cari LinkedIn]({linkedin_link})", unsafe_allow_html=True)
-                    with col3:
-                        st.markdown(f"<br>[💬 Kirim WA]({wa_link})", unsafe_allow_html=True)
-                    st.divider()
-                    
-            else:
-                st.warning("⚠️ Kolom 'nama' atau 'no_hp' tidak terdeteksi otomatis pada file Excel Anda. Pastikan header kolom sesuai.")
-        except Exception as e:
-            st.error(f"Gagal membaca file Excel/CSV: {e}")
+                            f"
