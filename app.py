@@ -304,4 +304,17 @@ with tab2:
                         st.markdown(
                             f"👤 **{nama_prospek}**<br>"
                             f"📞 No HP: `{no_hp_tampil}` (WA: `{no_hp_bersih}`)<br>"
-                            f"
+                            f"💼 Jabatan: *{jabatan_prospek}*<br>"
+                            f"🏢 Perusahaan: **{pt_prospek}**",
+                            unsafe_allow_html=True
+                        )
+                    with col2:
+                        st.markdown(f"<br>[🔍 Cari LinkedIn]({linkedin_link})", unsafe_allow_html=True)
+                    with col3:
+                        st.markdown(f"<br>[💬 Kirim WA]({wa_link})", unsafe_allow_html=True)
+                    st.divider()
+                    
+            else:
+                st.warning("⚠️ Kolom 'nama' atau 'no_hp' tidak terdeteksi otomatis pada file Excel Anda. Pastikan header kolom sesuai.")
+        except Exception as e:
+            st.error(f"Gagal membaca file Excel/CSV: {e}")
