@@ -1,139 +1,206 @@
-import io
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import urllib.parse
 
-# Konfigurasi Halaman
+# Konfigurasi Halaman Streamlit
 st.set_page_config(
     page_title="WA Blaster Pro - Multi-Account & VCF Generator",
     page_icon="📱",
-    layout="wide",
+    layout="wide"
 )
 
-# Sidebar: Pengaturan Akun & Perangkat (Tanpa Gemini API)
+# Inisialisasi Session State
+if "df_data" not in st.session_state:
+    st.session_state["df_data"] = None
+
+# Template Default Text Blast (Hanya menyapa Nama saja)
+default_pesan_ctbc = (
+    "Halo Bapak/Ibu {Nama},\n\n"
+    "Perkenalkan saya Dwi dari Bank CTBC. Kami ingin menginformasikan fasilitas Pinjaman Tanpa Agunan (KTA) "
+    "dengan bunga ringan dan proses cepat tanpa jaminan.\n\n"
+    "Apakah ada waktu sejenak untuk berdiskusi lebih lanjut?"
+)
+
+if "pesan_template" not in st.session_state:
+    st.session_state["pesan_template"] = default_pesan_ctbc
+
+st.title("📱 WA Blaster Pro - Multi-Account & VCF Generator")
+
+# Sidebar Konfigurasi
 with st.sidebar:
-  st.markdown("### ⚙️ Konfigurasi Perangkat")
-  st.success("Mode Standalone (Tanpa API Key Eksternal)")
+    st.header("⚙️ Konfigurasi Perangkat")
+    st.info("Mode Standalone (Operasional Lokal)")
+    
+    st.subheader("⚙️ Setting Multi-Akun WhatsApp (6 Akun)")
+    akun_opsi = [f"Akun WA {i+1} (Utama)" if i==0 else f"Akun WA {i+1}" for i in range(6)]
+    pilihan_akun = st.selectbox("Pilih Akun WhatsApp Pengirim:", akun_opsi)
+    
+    wa_pengirim = st.text_input("Atau Ketik Nomor WA Pengirim Aktif:", value="625888140182")
+    st.success(f"Active Sender: {wa_pengirim}")
 
-  st.markdown("---")
-  st.markdown("### ⚙️ Setting Multi-Akun WhatsApp (6 Akun)")
+# Buat Tab Antarmuka
+tab1, tab2 = st.tabs(["📁 Upload Excel & Auto VCF", "🚀 Kirim Blast Pesan"])
 
-  selected_account = st.selectbox(
-      "Pilih Akun WhatsApp Pengirim:",
-      [
-          "Akun WA 1 (Utama)",
-          "Akun WA 2",
-          "Akun WA 3",
-          "Akun WA 4",
-          "Akun WA 5",
-          "Akun WA 6",
-      ],
-  )
+# Helper fungsi untuk mendeteksi kolom secara fleksibel
+def get_lead_columns(df):
+    cols_lower = [str(c).strip().lower() for c in df.columns]
+    hp_col = next((df.columns[i] for i, c in enumerate(cols_lower) if any(k in c for k in ['hp', 'telepon', 'phone', 'no', 'wa'])), df.columns[0])
+    nama_col = next((df.columns[i] for i, c in enumerate(cols_lower) if any(k in c for k in ['nama', 'name'])), df.columns[1] if len(df.columns) > 1 else df.columns[0])
+    jabatan_col = next((df.columns[i] for i, c in enumerate(cols_lower) if any(k in c for k in ['jabatan', 'title', 'posis'])), None)
+    kantor_col = next((df.columns[i] for i, c in enumerate(cols_lower) if any(k in c for k in ['kantor', 'pt', 'perusahaan', 'company', 'org'])), None)
+    return hp_col, nama_col, jabatan_col, kantor_col
 
-  custom_sender = st.text_input(
-      "Atau Ketik Nomor WA Pengirim Aktif:", "625888140182"
-  )
-  st.info(f"Active Sender: {custom_sender}")
+# ==========================================
+# TAB 1: UPLOAD EXCEL & AUTO VCF
+# ==========================================
+with tab1:
+    st.subheader("📁 Upload File Excel Prospek Lead")
+    uploaded_file = st.file_uploader("Pilih file Excel (.xlsx / .xls):", type=["xlsx", "xls"])
+    
+    if uploaded_file is not None:
+        try:
+            df = pd.read_excel(uploaded_file)
+            st.session_state["df_data"] = df
+            st.success(f"Berhasil memuat {len(df)} data kontak dari Excel!")
+            st.dataframe(df, use_container_width=True)
+            
+            hp_col, nama_col, jabatan_col, kantor_col = get_lead_columns(df)
+            
+            # Generate VCF otomatis tanpa perlu pilih opsi manual
+            vcf_output = ""
+            for idx, row in df.iterrows():
+                raw_hp = str(row[hp_col]).strip().replace(".0", "")
+                if not raw_hp.startswith("62") and raw_hp.startswith("0"):
+                    raw_hp = "62" + raw_hp[1:]
+                
+                nama = str(row[nama_col]).strip()
+                jabatan = str(row[jabatan_col]).strip() if jabatan_col and pd.notna(row[jabatan_col]) else ""
+                kantor = str(row[kantor_col]).strip() if kantor_col and pd.notna(row[kantor_col]) else ""
+                
+                vcf_output += "BEGIN:VCARD\n"
+                vcf_output += "VERSION:3.0\n"
+                vcf_output += f"FN:{nama}\n"
+                if jabatan:
+                    vcf_output += f"TITLE:{jabatan}\n"
+                if kantor:
+                    vcf_output += f"ORG:{kantor}\n"
+                vcf_output += f"TEL;TYPE=CELL:{raw_hp}\n"
+                vcf_output += "END:VCARD\n"
+            
+            st.markdown("---")
+            st.subheader("📥 Download File VCF Kontak")
+            st.success("File VCF berhasil di-generate secara otomatis dari Excel!")
+            st.download_button(
+                label="📥 Download File VCF (.vcf)",
+                data=vcf_output,
+                file_name="Kontak_Lead_Nasabah.vcf",
+                mime="text/vcard",
+                type="primary"
+            )
+                
+        except Exception as e:
+            st.error(f"Gagal membaca file Excel: {e}")
+    else:
+        st.info("Silakan unggah file Excel prospek Anda di atas. File VCF akan langsung otomatis dibuat & siap di-download.")
 
-# Header Utama Aplikasi
-st.markdown(
-    "## 📱 WA Blaster Pro - Multi-Account & VCF Generator"
-)
-st.markdown("---")
-
-# Tab Navigasi Utama (Hanya tersisa Upload Excel & Blasting)
-tab_excel, tab_blast = st.tabs(
-    ["📁 Upload Excel / Data Riset", "🚀 Kirim Blast Pesan"]
-)
-
-# Inisialisasi Session State untuk menyimpan data yang di-upload
-if "data_nasabah" not in st.session_state:
-  st.session_state["data_nasabah"] = None
-
-with tab_excel:
-  st.markdown("### 📁 Upload Data Nasabah (Excel / CSV)")
-  st.write(
-      "Unggah file Excel hasil riset atau data nasabah Anda di sini untuk"
-      " langsung diproses ke sistem blast."
-  )
-
-  uploaded_file = st.file_uploader(
-      "Pilih file Excel (.xlsx) atau CSV", type=["xlsx", "csv"]
-  )
-
-  if uploaded_file is not None:
-    try:
-      if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-      else:
-        df = pd.read_excel(uploaded_file)
-
-      st.session_state["data_nasabah"] = df
-      st.success(
-          f"Berhasil memuat {len(df)} baris data calon nasabah unsecured"
-          " loan!"
-      )
-
-      # Tampilkan pratinjau data
-      st.markdown("#### Pratinjau Data Nasabah:")
-      st.dataframe(df, use_container_width=True)
-
-    except Exception as e:
-      st.error(f"Gagal membaca file: {e}")
-  else:
-    st.info("Silakan unggah file Excel data nasabah terlebih dahulu.")
-
-with tab_blast:
-  st.markdown("### 🚀 Panel Blasting WhatsApp")
-
-  if st.session_state["data_nasabah"] is not None:
-    df_active = st.session_state["data_nasabah"]
-    st.write(
-        f"Jumlah data siap kirim: **{len(df_active)} kontak** menggunakan pengirim"
-        f" **{custom_sender}**."
-    )
-
-    # Input Template Pesan
+# ==========================================
+# TAB 2: KIRIM BLAST PESAN
+# ==========================================
+with tab2:
+    st.subheader("🚀 Panel Blasting WhatsApp")
+    
+    df_active = st.session_state.get("df_data", None)
+    
+    if df_active is not None and not df_active.empty:
+        jumlah_kontak = len(df_active)
+        st.write(f"Jumlah data siap kirim: **{jumlah_kontak} kontak** menggunakan pengirim **{wa_pengirim}**.")
+    else:
+        st.warning("⚠️ Belum ada data Excel yang diunggah. Silakan unggah terlebih dahulu di tab '📁 Upload Excel & Auto VCF'.")
+    
+    # Text area template pesan (Hanya menyapa Nama)
     pesan_template = st.text_area(
         "Template Pesan WhatsApp:",
-        placeholder=(
-            "Halo Bapak/Ibu [Nama], kami dari layanan Unsecured Loan menawarkan"
-            " pinjaman tanpa agunan..."
-        ),
-        height=150,
+        value=st.session_state["pesan_template"],
+        height=180,
+        help="Gunakan placeholder {Nama} untuk menyapa nasabah secara personal."
     )
+    
+    st.session_state["pesan_template"] = pesan_template
+    
+    col_btn1, col_btn2 = st.columns(2)
+    show_preview = False
+    start_blast = False
+    
+    with col_btn1:
+        if st.button("🔍 Preview Pesan"):
+            show_preview = True
+                
+    with col_btn2:
+        if st.button("🚀 Mulai Blasting & Buka WhatsApp", type="primary"):
+            start_blast = True
 
-    col1, col2 = st.columns(2)
-    with col1:
-      btn_preview = st.button(
-          "🔍 Preview Pesan", use_container_width=True, type="secondary"
-      )
-    with col2:
-      btn_blast = st.button(
-          "🚀 Mulai Blasting Sekarang", use_container_width=True, type="primary"
-      )
+    # Menampilkan Preview Kontak Pertama
+    if show_preview:
+        if df_active is not None and not df_active.empty:
+            st.markdown("---")
+            st.subheader("📋 Preview Data Lead Pertama & Teks Pesan")
+            st.info("💡 *Catatan: Tombol 'Preview Pesan' menampilkan sampel kontak #1. Untuk mengirim pesan ke seluruh nasabah, klik tombol merah '🚀 Mulai Blasting & Buka WhatsApp' di atas.*")
+            
+            hp_col, nama_col, jabatan_col, kantor_col = get_lead_columns(df_active)
+            
+            sample_row = df_active.iloc[0]
+            s_nama = str(sample_row.get(nama_col, "-"))
+            s_hp = str(sample_row.get(hp_col, "-")).strip().replace(".0", "")
+            if not s_hp.startswith("62") and s_hp.startswith("0"):
+                s_hp = "62" + s_hp[1:]
+            s_jabatan = str(sample_row.get(jabatan_col, "-")) if jabatan_col else "-"
+            s_kantor = str(sample_row.get(kantor_col, "-")) if kantor_col else "-"
+            
+            pesan_sample = pesan_template.replace("{Nama}", s_nama)
+            encoded_sample = urllib.parse.quote(pesan_sample)
+            wa_sample_link = f"https://wa.me/{s_hp}?text={encoded_sample}"
+            
+            # Kartu Preview Kontak Pertama
+            st.info(f"""
+            📌 **Detail Nasabah (Kontak #1):**
+            * **Nama Nasabah:** {s_nama}
+            * **Nomor WA:** {s_hp}
+            * **Jabatan:** {s_jabatan}
+            * **Nama PT / Perusahaan:** {s_kantor}
+            
+            ---
+            💬 **Preview Teks Pesan Terkirim:**  
+            {pesan_sample}
+            """)
+            st.markdown(f'<a href="{wa_sample_link}" target="_blank" style="display:inline-block; background-color:#25D366; color:white; padding:10px 18px; text-decoration:none; border-radius:8px; font-weight:bold;">💬 Uji Kirim Chat WA ke Kontak #1 ({s_nama})</a>', unsafe_allow_html=True)
+            st.markdown("---")
+        else:
+            st.error("Silakan unggah data Excel terlebih dahulu untuk melihat preview!")
 
-    if btn_preview:
-      st.info("Fitur Preview: Menampilkan contoh pesan ke nasabah pertama.")
-      if not df_active.empty:
-        sample_row = df_active.iloc[0].to_dict()
-        st.write(f"Contoh hasil format untuk baris pertama: {sample_row}")
-
-    if btn_blast:
-      if not pesan_template.strip():
-        st.warning("Mohon isi template pesan WhatsApp terlebih dahulu!")
-      else:
-        st.success(
-            "Proses simulasi blasting dimulai! Pesan dikirimkan secara"
-            f" berurutan melalui akun {custom_sender}."
-        )
-        # Placeholder untuk logika pengiriman pesan Anda selanjutnya
-        progress_bar = st.progress(0)
-        for i in range(100):
-          progress_bar.progress(i + 1)
-        st.balloons()
-        st.success("Selesai! Seluruh pesan berhasil diproses.")
-  else:
-    st.warning(
-        "⚠️ Belum ada data yang dimuat. Silakan upload file Excel terlebih"
-        " dahulu di tab 'Upload Excel / Data Riset'."
-    )
+    # Menampilkan Daftar Blasting Semua Kontak
+    if start_blast:
+        if df_active is not None and not df_active.empty:
+            st.markdown("---")
+            st.subheader("📲 Daftar Link Kirim WA (Semua Kontak)")
+            hp_col, nama_col, jabatan_col, kantor_col = get_lead_columns(df_active)
+            
+            for idx, row in df_active.iterrows():
+                raw_hp = str(row.get(hp_col, "")).strip().replace(".0", "")
+                if not raw_hp.startswith("62") and raw_hp.startswith("0"):
+                    raw_hp = "62" + raw_hp[1:]
+                
+                nama_val = str(row.get(nama_col, "-"))
+                jabatan_val = str(row.get(jabatan_col, "-")) if jabatan_col else "-"
+                kantor_val = str(row.get(kantor_col, "-")) if kantor_col else "-"
+                
+                pesan_jadi = pesan_template.replace("{Nama}", nama_val)
+                encoded_msg = urllib.parse.quote(pesan_jadi)
+                wa_link = f"https://wa.me/{raw_hp}?text={encoded_msg}"
+                
+                st.markdown(
+                    f'🟢 **[{idx+1}] {nama_val}** | 📱 {raw_hp} | 💼 {jabatan_val} | 🏢 {kantor_val} '
+                    f'➔ <a href="{wa_link}" target="_blank" style="background-color:#25D366; color:white; padding:4px 12px; border-radius:5px; text-decoration:none; font-weight:bold;">💬 Kirim WA</a>',
+                    unsafe_allow_html=True
+                )
+        else:
+            st.error("Data kontak kosong! Harap unggah file Excel terlebih dahulu.")
